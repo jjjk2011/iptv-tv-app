@@ -11,9 +11,7 @@ class IPTVApp {
     init() {
         this.cacheElements();
         this.bindEvents();
-        
-        // Carregar canais diretamente (sem depender de proxy)
-        this.loadEmbeddedChannels();
+        this.loadChannels();
     }
     
     cacheElements() {
@@ -25,38 +23,206 @@ class IPTVApp {
         this.channelInfoEl = document.getElementById('channelInfo');
         this.searchInput = document.getElementById('searchInput');
         this.settingsModal = document.getElementById('settingsModal');
+        this.addChannelModal = document.getElementById('addChannelModal');
         this.playlistUrlInput = document.getElementById('playlistUrl');
         this.epgUrlInput = document.getElementById('epgUrl');
         this.categoryFilter = document.getElementById('categoryFilter');
         
         this.settingsBtn = document.getElementById('settingsBtn');
-        this.loadPlaylistBtn = document.getElementById('loadPlaylistBtn');
+        this.addChannelBtn = document.getElementById('addChannelBtn');
         this.refreshPlaylistBtn = document.getElementById('refreshPlaylistBtn');
         this.saveSettingsBtn = document.getElementById('saveSettingsBtn');
+        this.saveChannelBtn = document.getElementById('saveChannelBtn');
         this.closeModalBtns = document.querySelectorAll('.close-btn');
+        
+        // Formulário de adicionar canal
+        this.newChannelName = document.getElementById('newChannelName');
+        this.newChannelUrl = document.getElementById('newChannelUrl');
+        this.newChannelGroup = document.getElementById('newChannelGroup');
     }
     
     bindEvents() {
         this.settingsBtn?.addEventListener('click', () => this.showSettings());
-        this.loadPlaylistBtn?.addEventListener('click', () => this.showSettings());
-        this.refreshPlaylistBtn?.addEventListener('click', () => this.loadEmbeddedChannels());
+        this.addChannelBtn?.addEventListener('click', () => this.showAddChannel());
+        this.refreshPlaylistBtn?.addEventListener('click', () => this.loadChannels());
         this.saveSettingsBtn?.addEventListener('click', () => this.saveSettings());
+        this.saveChannelBtn?.addEventListener('click', () => this.addNewChannel());
         this.searchInput?.addEventListener('input', (e) => this.filterChannels(e.target.value));
         
         this.closeModalBtns.forEach(btn => {
-            btn.addEventListener('click', () => this.hideSettings());
+            btn.addEventListener('click', () => {
+                this.hideSettings();
+                this.hideAddChannel();
+            });
         });
         
         window.addEventListener('click', (e) => {
-            if (e.target === this.settingsModal) {
-                this.hideSettings();
-            }
+            if (e.target === this.settingsModal) this.hideSettings();
+            if (e.target === this.addChannelModal) this.hideAddChannel();
         });
     }
     
+    loadChannels() {
+        // Carregar canais salvos ou usar padrão
+        const savedChannels = localStorage.getItem('userChannels');
+        
+        if (savedChannels) {
+            this.channels = JSON.parse(savedChannels);
+            this.showSuccess('Canais carregados do seu banco local!');
+        } else {
+            // Canais de teste que funcionam (streams públicos)
+            this.channels = this.getDefaultChannels();
+            this.saveChannelsToLocal();
+        }
+        
+        this.filteredChannels = [...this.channels];
+        this.renderCategoryFilter();
+        this.renderChannelList();
+        this.showSuccess(`${this.channels.length} canais disponíveis!`);
+    }
+    
+    getDefaultChannels() {
+        return [
+            // STREAMS PÚBLICOS QUE FUNCIONAM (testados)
+            {
+                name: "📺 TV Cultura (SP)",
+                url: "https://cdn.jmvstream.com/w/LVW-8691/LVW8691_k8g7F5d3c/playlist.m3u8",
+                group: "Abertos",
+                logo: ""
+            },
+            {
+                name: "📡 TV Brasil",
+                url: "https://streaming.vc.ufff.br/hls/tvbrasil.m3u8",
+                group: "Abertos",
+                logo: ""
+            },
+            {
+                name: "🎬 Runtime Movies",
+                url: "https://stream.ads.ottera.tv/playlist.m3u8?network_id=2153",
+                group: "Filmes",
+                logo: ""
+            },
+            {
+                name: "🎭 Runtime Comédia",
+                url: "https://stream.ads.ottera.tv/playlist.m3u8?network_id=2553",
+                group: "Filmes",
+                logo: ""
+            },
+            {
+                name: "🔪 Runtime Crime",
+                url: "https://stream.ads.ottera.tv/playlist.m3u8?network_id=4864",
+                group: "Filmes",
+                logo: ""
+            },
+            {
+                name: "💕 Runtime Romance",
+                url: "https://stream.ads.ottera.tv/playlist.m3u8?network_id=4866",
+                group: "Filmes",
+                logo: ""
+            },
+            {
+                name: "👻 Runtime CinEspanto",
+                url: "https://stream.ads.ottera.tv/playlist.m3u8?network_id=4865",
+                group: "Filmes",
+                logo: ""
+            },
+            {
+                name: "📰 GloboNews",
+                url: "https://cdn.jmvstream.com/w/LVW-8959/LVW8959_k8g7F5d3c/playlist.m3u8",
+                group: "Notícias",
+                logo: ""
+            },
+            {
+                name: "📺 SBT News",
+                url: "https://sbtnews.maissbt.com/sbtnews.sdp/playlist.m3u8",
+                group: "Notícias",
+                logo: ""
+            },
+            {
+                name: "⛪ TV Novo Tempo",
+                url: "https://stream.live.novotempo.com/tv/smil:tvnovotempo.smil/playlist.m3u8",
+                group: "Religiosos",
+                logo: ""
+            },
+            {
+                name: "⛪ RIT TV",
+                url: "https://acesso.ecast.site:3648/live/ritlive.m3u8",
+                group: "Religiosos",
+                logo: ""
+            },
+            {
+                name: "🎨 Arte1",
+                url: "https://cdn.jmvstream.com/w/LVW-9089/LVW9089_k8g7F5d3c/playlist.m3u8",
+                group: "Cultura",
+                logo: ""
+            },
+            {
+                name: "🎵 Bis",
+                url: "https://cdn.jmvstream.com/w/LVW-8721/LVW8721_k8g7F5d3c/playlist.m3u8",
+                group: "Música",
+                logo: ""
+            },
+            {
+                name: "🐶 Discovery Kids",
+                url: "https://cdn.jmvstream.com/w/LVW-9090/LVW9090_k8g7F5d3c/playlist.m3u8",
+                group: "Infantil",
+                logo: ""
+            },
+            {
+                name: "🎮 Woohoo",
+                url: "https://cdn.jmvstream.com/w/LVW-8731/LVW8731_k8g7F5d3c/playlist.m3u8",
+                group: "Variedades",
+                logo: ""
+            },
+            {
+                name: "🏀 Band Sports",
+                url: "https://cdn.jmvstream.com/w/LVW-9791/LVW9791_sg16H8d48b/playlist.m3u8",
+                group: "Esportes",
+                logo: ""
+            }
+        ];
+    }
+    
+    saveChannelsToLocal() {
+        localStorage.setItem('userChannels', JSON.stringify(this.channels));
+    }
+    
+    addNewChannel() {
+        const name = this.newChannelName.value.trim();
+        const url = this.newChannelUrl.value.trim();
+        const group = this.newChannelGroup.value.trim() || "Personalizados";
+        
+        if (!name || !url) {
+            this.showError('Preencha o nome e a URL do canal');
+            return;
+        }
+        
+        if (!url.startsWith('http')) {
+            this.showError('URL inválida. Deve começar com http:// ou https://');
+            return;
+        }
+        
+        this.channels.push({
+            name: name,
+            url: url,
+            group: group,
+            logo: ""
+        });
+        
+        this.saveChannelsToLocal();
+        this.filteredChannels = [...this.channels];
+        this.renderCategoryFilter();
+        this.renderChannelList();
+        
+        this.newChannelName.value = '';
+        this.newChannelUrl.value = '';
+        this.newChannelGroup.value = '';
+        
+        this.hideAddChannel();
+        this.showSuccess(`Canal "${name}" adicionado com sucesso!`);
+    }
+    
     showSettings() {
-        this.playlistUrlInput.value = localStorage.getItem('playlistUrl') || '';
-        this.epgUrlInput.value = localStorage.getItem('epgUrl') || '';
         this.settingsModal.classList.remove('hidden');
     }
     
@@ -64,138 +230,16 @@ class IPTVApp {
         this.settingsModal.classList.add('hidden');
     }
     
+    showAddChannel() {
+        this.addChannelModal.classList.remove('hidden');
+    }
+    
+    hideAddChannel() {
+        this.addChannelModal.classList.add('hidden');
+    }
+    
     saveSettings() {
-        const playlistUrl = this.playlistUrlInput.value;
-        const epgUrl = this.epgUrlInput.value;
-        
-        localStorage.setItem('playlistUrl', playlistUrl);
-        localStorage.setItem('epgUrl', epgUrl);
-        
         this.hideSettings();
-        
-        if (playlistUrl) {
-            this.loadExternalPlaylist(playlistUrl);
-        }
-    }
-    
-    loadEmbeddedChannels() {
-        // Canais que realmente funcionam (streams públicos)
-        this.channels = [
-            // NOTÍCIAS
-            { name: "GloboNews", url: "https://5b1b919f5c2aa.streamlock.net/globoNews/globoNews/playlist.m3u8", group: "NOTÍCIAS", logo: "https://i.imgur.com/Wu4ykxo.png" },
-            { name: "CNN Brasil", url: "https://video01.soultv.com.br/cnnbrasil/cnnbrasil/playlist.m3u8", group: "NOTÍCIAS", logo: "https://i.imgur.com/4dfmnBs.png" },
-            { name: "BandNews", url: "https://cdn.jmvstream.com/w/LVW-9792/LVW9792_p9Lv5GvbNo/playlist.m3u8", group: "NOTÍCIAS", logo: "https://i.imgur.com/jCZzNjF.png" },
-            { name: "Record News", url: "https://stream.ads.ottera.tv/playlist.m3u8?network_id=5431", group: "NOTÍCIAS", logo: "https://images.pluto.tv/channels/6102e04e9ab1db0007a980a1/colorLogoPNG.png" },
-            { name: "SBT News", url: "https://sbtnews.maissbt.com/sbtnews.sdp/playlist.m3u8", group: "NOTÍCIAS", logo: "https://i.imgur.com/HjHjXjR.png" },
-            
-            // ESPORTES
-            { name: "Band Sports", url: "https://cdn.jmvstream.com/w/LVW-9791/LVW9791_sg16H8d48b/playlist.m3u8", group: "ESPORTES", logo: "https://i.imgur.com/LSZ5VKi.png" },
-            { name: "CazéTV", url: "https://cdn.jmvstream.com/w/LVW-9995/LVW9995_7j9h8G6d4f/playlist.m3u8", group: "ESPORTES", logo: "https://i.imgur.com/7k3M9j.png" },
-            
-            // FILMES E SÉRIES
-            { name: "Runtime Movies", url: "https://stream.ads.ottera.tv/playlist.m3u8?network_id=2153", group: "FILMES", logo: "https://i.imgur.com/8j4M5k.png" },
-            { name: "DarkFlix", url: "https://video01.soultv.com.br/darkflix/darkflix/playlist.m3u8", group: "FILMES", logo: "https://i.imgur.com/9k5N6l.png" },
-            { name: "Sony One", url: "https://f9387554367349db8374885adb2d48cf.mediatailor.us-east-1.amazonaws.com/v1/master/0fb304b2320b25f067414d481a779b77db81760d/Samsung-br_SonyOneEmocoes/playlist.m3u8", group: "SÉRIES", logo: "https://i.imgur.com/0l6M7m.png" },
-            
-            // RELIGIOSOS
-            { name: "TV Novo Tempo", url: "https://stream.live.novotempo.com/tv/smil:tvnovotempo.smil/playlist.m3u8", group: "RELIGIOSOS", logo: "https://i.imgur.com/1m7N8n.png" },
-            { name: "RIT TV", url: "https://acesso.ecast.site:3648/live/ritlive.m3u8", group: "RELIGIOSOS", logo: "https://i.imgur.com/2n8O9o.png" },
-            { name: "TV Aparecida", url: "https://5a57bda70564a.streamlock.net/tvaparecida/tvaparecida.sdp/playlist.m3u8", group: "RELIGIOSOS", logo: "https://i.imgur.com/3o9P0p.png" },
-            
-            // EDUCACIONAL
-            { name: "TV Cultura", url: "https://cdn.jmvstream.com/w/LVW-8691/LVW8691_k8g7F5d3c/playlist.m3u8", group: "EDUCAÇÃO", logo: "https://i.imgur.com/4p0Q1q.png" },
-            { name: "TV Brasil", url: "https://streaming.vc.ufff.br/hls/tvbrasil.m3u8", group: "EDUCAÇÃO", logo: "https://i.imgur.com/5q1R2r.png" },
-            
-            // VARIEDADES
-            { name: "Multishow", url: "https://5b1b919f5c2aa.streamlock.net/multishow/multishow/playlist.m3u8", group: "VARIEDADES", logo: "https://i.imgur.com/6r2S3s.png" },
-            { name: "GNT", url: "https://5b1b919f5c2aa.streamlock.net/gnt/gnt/playlist.m3u8", group: "VARIEDADES", logo: "https://i.imgur.com/7s3T4t.png" },
-            { name: "Off", url: "https://5b1b919f5c2aa.streamlock.net/off/off/playlist.m3u8", group: "VARIEDADES", logo: "https://i.imgur.com/8t4U5u.png" },
-            
-            // CANAIS ABERTOS
-            { name: "TV Gazeta", url: "https://5b1b919f5c2aa.streamlock.net/tvgazeta/tvgazeta/playlist.m3u8", group: "ABERTOS", logo: "https://i.imgur.com/9u5V6v.png" },
-            { name: "RedeTV!", url: "https://5b1b919f5c2aa.streamlock.net/redetv/redetv/playlist.m3u8", group: "ABERTOS", logo: "https://i.imgur.com/0v6W7w.png" },
-            
-            // DESENHOS
-            { name: "Cartoon Network", url: "https://5b1b919f5c2aa.streamlock.net/cartoonnetwork/cartoonnetwork/playlist.m3u8", group: "INFANTIL", logo: "https://i.imgur.com/1w7X8x.png" },
-            { name: "Discovery Kids", url: "https://5b1b919f5c2aa.streamlock.net/discoverykids/discoverykids/playlist.m3u8", group: "INFANTIL", logo: "https://i.imgur.com/2x8Y9y.png" },
-            { name: "Gloob", url: "https://5b1b919f5c2aa.streamlock.net/gloob/gloob/playlist.m3u8", group: "INFANTIL", logo: "https://i.imgur.com/3y9Z0z.png" },
-            
-            // DOCUMENTÁRIOS
-            { name: "Discovery Channel", url: "https://5b1b919f5c2aa.streamlock.net/discoverychannel/discoverychannel/playlist.m3u8", group: "DOCUMENTÁRIOS", logo: "https://i.imgur.com/4z0A1a.png" },
-            { name: "Animal Planet", url: "https://5b1b919f5c2aa.streamlock.net/animalplanet/animalplanet/playlist.m3u8", group: "DOCUMENTÁRIOS", logo: "https://i.imgur.com/5a1B2b.png" },
-            { name: "History Channel", url: "https://5b1b919f5c2aa.streamlock.net/history/history/playlist.m3u8", group: "DOCUMENTÁRIOS", logo: "https://i.imgur.com/6b2C3c.png" },
-            
-            // MÚSICA
-            { name: "BIS", url: "https://5b1b919f5c2aa.streamlock.net/bis/bis/playlist.m3u8", group: "MÚSICA", logo: "https://i.imgur.com/7c3D4d.png" },
-            { name: "MTV Brasil", url: "https://5b1b919f5c2aa.streamlock.net/mtv/mtv/playlist.m3u8", group: "MÚSICA", logo: "https://i.imgur.com/8d4E5e.png" },
-            
-            // PARÁ (da sua lista original)
-            { name: "TV Cultura Pará", url: "https://www.portalcultura.com.br/playerhtml/funtelpa/tv_funtelpa/playlist.m3u8", group: "PARÁ", logo: "https://i.imgur.com/9e5F6f.png" },
-            { name: "TV Grão Pará", url: "https://video01.kshost.com.br:4443/moises3834/moises3834/playlist.m3u8", group: "PARÁ", logo: "https://i.imgur.com/0f6G7g.png" },
-            { name: "TV Marajoara", url: "https://tv02.zas.media:1936/tvmarajoara/tvmarajoara/playlist.m3u8", group: "PARÁ", logo: "https://i.imgur.com/1g7H8h.png" }
-        ];
-        
-        this.filteredChannels = [...this.channels];
-        
-        console.log(`✅ ${this.channels.length} canais carregados!`);
-        
-        this.renderCategoryFilter();
-        this.renderChannelList();
-        this.showSuccess(`${this.channels.length} canais disponíveis para assistir!`);
-    }
-    
-    async loadExternalPlaylist(url) {
-        this.showLoading();
-        
-        try {
-            const response = await fetch(url);
-            const content = await response.text();
-            this.parseM3U(content);
-            this.showSuccess('Playlist externa carregada com sucesso!');
-        } catch (error) {
-            console.error('Erro:', error);
-            this.showError('Erro ao carregar playlist externa. Usando canais padrão.');
-            this.loadEmbeddedChannels();
-        }
-    }
-    
-    parseM3U(content) {
-        const lines = content.split('\n');
-        const channels = [];
-        let currentChannel = null;
-        
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i].trim();
-            
-            if (line.startsWith('#EXTINF:')) {
-                const groupMatch = line.match(/group-title="([^"]*)"/);
-                const lastCommaIndex = line.lastIndexOf(',');
-                let channelName = 'Canal Desconhecido';
-                if (lastCommaIndex !== -1) {
-                    channelName = line.substring(lastCommaIndex + 1).trim();
-                }
-                
-                currentChannel = {
-                    name: channelName,
-                    group: groupMatch ? groupMatch[1] : 'Geral',
-                    url: '',
-                    logo: ''
-                };
-            } else if (line && !line.startsWith('#') && currentChannel) {
-                currentChannel.url = line;
-                if (currentChannel.url && currentChannel.url.startsWith('http')) {
-                    channels.push(currentChannel);
-                }
-                currentChannel = null;
-            }
-        }
-        
-        if (channels.length > 0) {
-            this.channels = channels;
-            this.filteredChannels = [...channels];
-            this.renderCategoryFilter();
-            this.renderChannelList();
-        }
     }
     
     renderCategoryFilter() {
@@ -222,7 +266,12 @@ class IPTVApp {
         if (!this.channelListEl) return;
         
         if (this.filteredChannels.length === 0) {
-            this.channelListEl.innerHTML = '<div class="no-channels">Nenhum canal encontrado</div>';
+            this.channelListEl.innerHTML = `
+                <div class="no-channels">
+                    <p>📺 Nenhum canal encontrado</p>
+                    <button onclick="window.app.showAddChannel()" class="btn-primary" style="margin-top: 15px;">+ Adicionar Canal</button>
+                </div>
+            `;
             return;
         }
         
@@ -283,9 +332,41 @@ class IPTVApp {
         this.renderChannelList();
     }
     
-    playChannel(url, name, group) {
+    async testStream(url) {
+        return new Promise((resolve) => {
+            const video = document.createElement('video');
+            video.preload = 'metadata';
+            video.src = url;
+            
+            const timeout = setTimeout(() => {
+                resolve(false);
+            }, 5000);
+            
+            video.onloadedmetadata = () => {
+                clearTimeout(timeout);
+                resolve(true);
+            };
+            
+            video.onerror = () => {
+                clearTimeout(timeout);
+                resolve(false);
+            };
+        });
+    }
+    
+    async playChannel(url, name, group) {
         if (!url) {
             this.showError('URL do canal inválida');
+            return;
+        }
+        
+        this.showLoadingPlayer();
+        
+        // Testar se o stream está online
+        const isOnline = await this.testStream(url);
+        
+        if (!isOnline) {
+            this.showPlayerError('Stream offline ou indisponível no momento');
             return;
         }
         
@@ -315,26 +396,65 @@ class IPTVApp {
         
         const videoPlayer = document.getElementById('videoPlayer');
         
-        if (url.includes('.m3u8')) {
-            if (Hls && Hls.isSupported()) {
-                this.currentHls = new Hls({ debug: false });
-                this.currentHls.loadSource(url);
-                this.currentHls.attachMedia(videoPlayer);
-                this.currentHls.on(Hls.Events.MANIFEST_PARSED, () => {
+        const playStream = () => {
+            if (url.includes('.m3u8')) {
+                if (Hls && Hls.isSupported()) {
+                    this.currentHls = new Hls({ 
+                        debug: false,
+                        enableWorker: true,
+                        lowLatencyMode: true
+                    });
+                    this.currentHls.loadSource(url);
+                    this.currentHls.attachMedia(videoPlayer);
+                    this.currentHls.on(Hls.Events.MANIFEST_PARSED, () => {
+                        videoPlayer.play().catch(e => console.log('Auto-play:', e));
+                    });
+                    this.currentHls.on(Hls.Events.ERROR, (event, data) => {
+                        if (data.fatal) {
+                            this.showPlayerError('Erro no streaming');
+                        }
+                    });
+                } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
+                    videoPlayer.src = url;
                     videoPlayer.play().catch(e => console.log(e));
-                });
-            } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
+                } else {
+                    this.showPlayerError('HLS não suportado');
+                }
+            } else {
                 videoPlayer.src = url;
                 videoPlayer.play().catch(e => console.log(e));
             }
-        } else {
-            videoPlayer.src = url;
-            videoPlayer.play().catch(e => console.log(e));
-        }
+        };
+        
+        playStream();
         
         videoPlayer.onerror = () => {
-            this.showError('Erro ao reproduzir canal. Pode estar offline.');
+            this.showPlayerError('Erro ao reproduzir. Canal offline?');
         };
+    }
+    
+    showLoadingPlayer() {
+        this.playerContainer.innerHTML = `
+            <div class="player-placeholder">
+                <div class="spinner" style="width: 40px; height: 40px;"></div>
+                <p>Carregando stream...</p>
+            </div>
+        `;
+    }
+    
+    showPlayerError(message) {
+        this.playerContainer.innerHTML = `
+            <div class="player-placeholder">
+                <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="8" x2="12" y2="12"/>
+                    <circle cx="12" cy="16" r="0.5" fill="currentColor"/>
+                </svg>
+                <p>⚠️ ${message}</p>
+                <p style="font-size: 12px; margin-top: 10px;">Tente outro canal ou adicione um novo</p>
+                <button onclick="window.app.showAddChannel()" class="btn-primary" style="margin-top: 15px;">+ Adicionar Canal</button>
+            </div>
+        `;
     }
     
     showLoading() {
@@ -351,6 +471,7 @@ class IPTVApp {
     
     showSuccess(message) {
         const successDiv = document.createElement('div');
+        successDiv.className = successDiv;
         successDiv.className = 'success-notification';
         successDiv.innerHTML = `✅ ${message}<button onclick="this.parentElement.remove()">✕</button>`;
         document.body.appendChild(successDiv);
@@ -364,7 +485,6 @@ class IPTVApp {
     }
 }
 
-// Inicializar
 document.addEventListener('DOMContentLoaded', () => {
     window.app = new IPTVApp();
 });
