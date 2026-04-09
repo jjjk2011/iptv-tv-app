@@ -2,10 +2,11 @@ class IPTVApp {
     constructor() {
         this.channels = [];
         this.currentChannel = null;
+        this.currentHls = null;
+        // Usar proxy da própria aplicação
         this.playlistUrl = localStorage.getItem('playlistUrl') || 'https://raw.githubusercontent.com/Ramys/Iptv-Brasil-2026/master/novalista.m3u8';
         this.epgUrl = localStorage.getItem('epgUrl') || '';
         this.filteredChannels = [];
-        this.hlsInstances = new Map();
         
         this.init();
     }
@@ -14,6 +15,7 @@ class IPTVApp {
         this.cacheElements();
         this.bindEvents();
         
+        // Carregar playlist automaticamente
         if (this.playlistUrl) {
             this.loadPlaylist();
         }
@@ -90,25 +92,20 @@ class IPTVApp {
         this.showLoading();
         
         try {
-            // Tentar diferentes proxies CORS
             let m3uContent = null;
-            const proxies = [
-                `https://api.allorigins.win/raw?url=${encodeURIComponent(this.playlistUrl)}`,
-                `https://cors-anywhere.herokuapp.com/${this.playlistUrl}`,
-                `https://thingproxy.freeboard.io/fetch/${this.playlistUrl}`
-            ];
             
-            for (const proxy of proxies) {
-                try {
-                    console.log(`Tentando proxy: ${proxy}`);
-                    const response = await fetch(proxy, { timeout: 10000 });
-                    if (response.ok) {
-                        m3uContent = await response.text();
-                        break;
-                    }
-                } catch (e) {
-                    console.log(`Proxy falhou: ${proxy}`);
-                }
+            // Tentar via proxy da Vercel primeiro
+            const proxyUrl = `/api/proxy?url=${encodeURIComponent(this.playlistUrl)}`;
+            
+            console.log('Tentando carregar via proxy:', proxyUrl);
+            
+            const response = await fetch(proxyUrl);
+            
+            if (response.ok) {
+                m3uContent = await response.text();
+                console.log('Playlist carregada com sucesso via proxy');
+            } else {
+                throw new Error('Proxy request failed');
             }
             
             if (!m3uContent) {
@@ -123,6 +120,15 @@ class IPTVApp {
         } catch (error) {
             console.error('Erro ao carregar playlist:', error);
             this.showError('Erro ao carregar playlist. Verifique a URL e tente novamente.');
+            
+            // Mostrar instruções
+            this.channelListEl.innerHTML = `
+                <div class="error-container">
+                    <p>⚠️ Erro ao carregar a playlist</p>
+                    <p style="font-size: 12px; margin-top: 10px;">Verifique se a URL está correta e tente novamente.</p>
+                    <button onclick="window.app.showSettings()" class="btn-primary" style="margin-top: 15px;">Configurar URL</button>
+                </div>
+            `;
         }
     }
     
@@ -130,18 +136,21 @@ class IPTVApp {
         const lines = content.split('\n');
         const channels = [];
         let currentChannel = null;
+        let validChannelsCount = 0;
         
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i].trim();
             
             if (line.startsWith('#EXTINF:')) {
+                // Extrair informações do canal
                 const tvgIdMatch = line.match(/tvg-id="([^"]*)"/);
                 const tvgNameMatch = line.match(/tvg-name="([^"]*)"/);
                 const tvgLogoMatch = line.match(/tvg-logo="([^"]*)"/);
                 const groupMatch = line.match(/group-title="([^"]*)"/);
                 
+                // Nome do canal (após a última vírgula)
                 const lastCommaIndex = line.lastIndexOf(',');
-                let channelName = 'Unknown Channel';
+                let channelName = 'Canal Desconhecido';
                 if (lastCommaIndex !== -1) {
                     channelName = line.substring(lastCommaIndex + 1).trim();
                 }
@@ -156,10 +165,11 @@ class IPTVApp {
             } else if (line && !line.startsWith('#') && currentChannel) {
                 currentChannel.url = line;
                 
-                // Verificar se a URL parece válida
+                // Verificar se a URL é válida
                 if (currentChannel.url && 
                     (currentChannel.url.startsWith('http://') || currentChannel.url.startsWith('https://'))) {
                     channels.push(currentChannel);
+                    validChannelsCount++;
                 }
                 currentChannel = null;
             }
@@ -173,9 +183,9 @@ class IPTVApp {
         if (channels.length > 0) {
             this.renderCategoryFilter();
             this.renderChannelList();
-            this.showSuccess(`${channels.length} canais carregados!`);
+            this.showSuccess(`${channels.length} canais carregados com sucesso!`);
         } else {
-            this.showError('Nenhum canal encontrado na playlist');
+            this.showError('Nenhum canal encontrado na playlist. Verifique o formato do arquivo M3U.');
         }
     }
     
@@ -212,7 +222,8 @@ class IPTVApp {
     
     async loadEPG() {
         try {
-            const response = await fetch(this.epgUrl);
+            const proxyUrl = `/api/proxy?url=${encodeURIComponent(this.epgUrl)}`;
+            const response = await fetch(proxyUrl);
             const xmlContent = await response.text();
             this.parseEPG(xmlContent);
         } catch (error) {
@@ -244,6 +255,12 @@ class IPTVApp {
     renderChannelList() {
         if (!this.channelListEl) return;
         
+        if (this.filteredChannels.length === 0) {
+            this.channelListEl.innerHTML = '<div class="no-channels">Nenhum canal encontrado</div>';
+            return;
+        }
+        
+        // Agrupar por categoria
         const grouped = {};
         this.filteredChannels.forEach(channel => {
             const group = channel.group || 'Geral';
@@ -284,8 +301,9 @@ class IPTVApp {
             });
         }
         
-        this.channelListEl.innerHTML = html || '<div class="no-channels">Nenhum canal encontrado</div>';
+        this.channelListEl.innerHTML = html;
         
+        // Adicionar event listeners
         document.querySelectorAll('.channel-item').forEach(item => {
             item.addEventListener('click', () => {
                 const url = item.dataset.url;
@@ -308,66 +326,15 @@ class IPTVApp {
         this.renderChannelList();
     }
     
-    testStreamUrl(url) {
-        // Detectar tipo de URL
-        if (url.includes('sinalmycn.com') || url.includes('2025easy.lat')) {
-            return { 
-                works: false, 
-                message: '⚠️ Stream privado - requer autenticação do provedor IPTV',
-                requiresAuth: true 
-            };
-        }
-        
-        if (url.includes('.m3u8') || url.includes('playlist.m3u8')) {
-            return { 
-                works: true, 
-                message: '📡 Stream HLS detectado',
-                requiresAuth: false 
-            };
-        }
-        
-        if (url.endsWith('.ts')) {
-            return { 
-                works: true, 
-                message: '📡 Stream TS detectado',
-                requiresAuth: false 
-            };
-        }
-        
-        return { 
-            works: true, 
-            message: '📡 Stream detectado',
-            requiresAuth: false 
-        };
-    }
-    
     playChannel(url, name, group, logo) {
         if (!url || url === 'undefined') {
             this.showError('URL do canal inválida');
             return;
         }
         
-        // Testar a URL antes de tentar reproduzir
-        const testResult = this.testStreamUrl(url);
-        
-        if (testResult.requiresAuth) {
-            this.showError(`${testResult.message}\n\nEste é um stream privado que requer uma assinatura IPTV válida.`);
-            this.playerContainer.innerHTML = `
-                <div class="player-placeholder">
-                    <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                        <rect x="2" y="4" width="20" height="16" rx="2"/>
-                        <path d="M10 8l6 4-6 4V8z"/>
-                    </svg>
-                    <p>🔒 Stream Privado</p>
-                    <p style="font-size: 14px; margin-top: 10px;">${testResult.message}</p>
-                    <p style="font-size: 12px; margin-top: 5px;">Este canal requer uma assinatura IPTV válida</p>
-                </div>
-            `;
-            return;
-        }
-        
         this.currentChannel = { url, name, group, logo };
         
+        // Atualizar UI
         document.querySelectorAll('.channel-item').forEach(item => {
             item.classList.remove('active');
             if (item.dataset.url === url) {
@@ -390,6 +357,7 @@ class IPTVApp {
             this.currentHls.destroy();
         }
         
+        // Criar player
         this.playerContainer.innerHTML = `
             <video id="videoPlayer" controls autoplay style="width: 100%; height: 100%; object-fit: contain;">
                 <source src="${url}" type="application/vnd.apple.mpegurl">
@@ -403,7 +371,7 @@ class IPTVApp {
         
         const videoPlayer = document.getElementById('videoPlayer');
         
-        // Tentar diferentes métodos de reprodução
+        // Tentar reproduzir
         if (url.includes('.m3u8') || url.includes('playlist.m3u8')) {
             if (Hls && Hls.isSupported()) {
                 this.currentHls = new Hls({
@@ -424,9 +392,7 @@ class IPTVApp {
                 });
             } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
                 videoPlayer.src = url;
-                videoPlayer.addEventListener('loadedmetadata', () => {
-                    videoPlayer.play().catch(e => console.log('Auto-play prevented:', e));
-                });
+                videoPlayer.play().catch(e => console.log('Auto-play prevented:', e));
             } else {
                 this.showPlayerError('Seu navegador não suporta streaming HLS');
             }
@@ -434,7 +400,6 @@ class IPTVApp {
             videoPlayer.src = url;
             videoPlayer.play().catch(e => {
                 console.log('Auto-play prevented:', e);
-                this.showPlayerError('Reprodução automática bloqueada. Clique no play para assistir.');
             });
         }
         
@@ -442,23 +407,14 @@ class IPTVApp {
             console.error('Player error:', e);
             this.showPlayerError('Erro ao carregar o stream. O canal pode estar offline.');
         });
-        
-        // Tentar recarregar se travar
-        videoPlayer.addEventListener('stalled', () => {
-            console.log('Stream stalled');
-            setTimeout(() => {
-                if (videoPlayer.paused || videoPlayer.readyState < 2) {
-                    videoPlayer.load();
-                }
-            }, 5000);
-        });
     }
     
     showPlayerError(message = 'Erro ao carregar o canal') {
         const errorDiv = document.getElementById('playerError');
         if (errorDiv) {
             errorDiv.classList.remove('hidden');
-            errorDiv.querySelector('p').innerHTML = `⚠️ ${message}`;
+            const p = errorDiv.querySelector('p');
+            if (p) p.innerHTML = `⚠️ ${message}`;
         }
     }
     
@@ -475,10 +431,6 @@ class IPTVApp {
         `;
         document.body.appendChild(errorDiv);
         setTimeout(() => errorDiv.remove(), 8000);
-        
-        if (this.channels.length === 0) {
-            this.channelListEl.innerHTML = `<div class="error">${message}</div>`;
-        }
     }
     
     showSuccess(message) {
@@ -499,6 +451,7 @@ class IPTVApp {
     }
 }
 
+// Inicializar
 document.addEventListener('DOMContentLoaded', () => {
     window.app = new IPTVApp();
 });
