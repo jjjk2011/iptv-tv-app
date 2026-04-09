@@ -3,8 +3,9 @@ class IPTVApp {
         this.channels = [];
         this.currentChannel = null;
         this.player = null;
-        this.playlistUrl = localStorage.getItem('playlistUrl') || '';
+        this.playlistUrl = localStorage.getItem('playlistUrl') || 'https://raw.githubusercontent.com/Ramys/Iptv-Brasil-2026/master/novalista.m3u8';
         this.epgUrl = localStorage.getItem('epgUrl') || '';
+        this.filteredChannels = [];
         
         this.init();
     }
@@ -12,7 +13,11 @@ class IPTVApp {
     init() {
         this.cacheElements();
         this.bindEvents();
-        this.loadSavedPlaylist();
+        
+        // Carregar playlist automaticamente se tiver URL
+        if (this.playlistUrl) {
+            this.loadPlaylist();
+        }
     }
     
     cacheElements() {
@@ -20,11 +25,13 @@ class IPTVApp {
         this.playerContainer = document.getElementById('playerContainer');
         this.currentChannelNameEl = document.getElementById('currentChannelName');
         this.currentChannelGroupEl = document.getElementById('currentChannelGroup');
+        this.currentChannelLogoEl = document.getElementById('currentChannelLogo');
         this.channelInfoEl = document.getElementById('channelInfo');
         this.searchInput = document.getElementById('searchInput');
         this.settingsModal = document.getElementById('settingsModal');
         this.playlistUrlInput = document.getElementById('playlistUrl');
         this.epgUrlInput = document.getElementById('epgUrl');
+        this.categoryFilter = document.getElementById('categoryFilter');
         
         // Buttons
         this.settingsBtn = document.getElementById('settingsBtn');
@@ -77,12 +84,6 @@ class IPTVApp {
         }
     }
     
-    loadSavedPlaylist() {
-        if (this.playlistUrl) {
-            this.loadPlaylist();
-        }
-    }
-    
     async loadPlaylist() {
         if (!this.playlistUrl) {
             this.showError('Por favor, configure uma URL de playlist M3U nas configurações');
@@ -92,7 +93,16 @@ class IPTVApp {
         this.showLoading();
         
         try {
-            const response = await fetch(this.playlistUrl);
+            // Tentar carregar com proxy CORS se necessário
+            let response;
+            try {
+                response = await fetch(this.playlistUrl);
+            } catch (corsError) {
+                // Se falhar por CORS, tentar com proxy
+                console.log('Tentando com proxy CORS...');
+                response = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(this.playlistUrl)}`);
+            }
+            
             const m3uContent = await response.text();
             this.parseM3U(m3uContent);
             
@@ -114,34 +124,84 @@ class IPTVApp {
             const line = lines[i].trim();
             
             if (line.startsWith('#EXTINF:')) {
-                // Parse channel info
-                const match = line.match(/#EXTINF:-?\d+(?: tvg-id="([^"]*)")?(?: tvg-name="([^"]*)")?(?: tvg-logo="([^"]*)")?(?: group-title="([^"]*)")?,(.*)/);
+                // Parse channel info - Regex melhorado
+                const tvgIdMatch = line.match(/tvg-id="([^"]*)"/);
+                const tvgNameMatch = line.match(/tvg-name="([^"]*)"/);
+                const tvgLogoMatch = line.match(/tvg-logo="([^"]*)"/);
+                const groupMatch = line.match(/group-title="([^"]*)"/);
                 
-                if (match) {
-                    currentChannel = {
-                        id: match[1] || `channel_${i}`,
-                        name: match[5] || 'Unknown Channel',
-                        logo: match[3] || '',
-                        group: match[4] || 'General',
-                        url: ''
-                    };
+                // Extract channel name (after the last comma)
+                const lastCommaIndex = line.lastIndexOf(',');
+                let channelName = 'Unknown Channel';
+                if (lastCommaIndex !== -1) {
+                    channelName = line.substring(lastCommaIndex + 1).trim();
                 }
+                
+                currentChannel = {
+                    id: tvgIdMatch ? tvgIdMatch[1] : `channel_${i}`,
+                    name: tvgNameMatch ? tvgNameMatch[1] : channelName,
+                    logo: tvgLogoMatch ? tvgLogoMatch[1] : '',
+                    group: groupMatch ? groupMatch[1] : 'Geral',
+                    url: ''
+                };
             } else if (line && !line.startsWith('#') && currentChannel) {
                 // This is the stream URL
                 currentChannel.url = line;
+                // Limpar URLs com problemas
+                if (currentChannel.url.startsWith('http://hls1.sua.tv')) {
+                    // Pular URLs inválidas
+                    currentChannel = null;
+                    continue;
+                }
                 channels.push(currentChannel);
                 currentChannel = null;
             }
         }
         
         this.channels = channels;
+        this.filteredChannels = [...channels];
+        this.renderCategoryFilter();
         this.renderChannelList();
         
         if (channels.length === 0) {
             this.showError('Nenhum canal encontrado na playlist');
         } else {
             console.log(`Carregados ${channels.length} canais`);
+            this.showSuccess(`${channels.length} canais carregados com sucesso!`);
         }
+    }
+    
+    renderCategoryFilter() {
+        if (!this.categoryFilter) return;
+        
+        // Get unique categories
+        const categories = ['Todos', ...new Set(this.channels.map(ch => ch.group).filter(g => g && g !== 'Geral'))];
+        
+        this.categoryFilter.innerHTML = categories.map(cat => 
+            `<option value="${cat}">${cat}</option>`
+        ).join('');
+        
+        this.categoryFilter.addEventListener('change', (e) => {
+            this.filterByCategory(e.target.value);
+        });
+    }
+    
+    filterByCategory(category) {
+        if (category === 'Todos') {
+            this.filteredChannels = [...this.channels];
+        } else {
+            this.filteredChannels = this.channels.filter(ch => ch.group === category);
+        }
+        
+        // Apply search filter if exists
+        const searchTerm = this.searchInput?.value || '';
+        if (searchTerm) {
+            this.filteredChannels = this.filteredChannels.filter(ch => 
+                ch.name.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+        }
+        
+        this.renderChannelList();
     }
     
     async loadEPG() {
@@ -159,7 +219,6 @@ class IPTVApp {
         const xmlDoc = parser.parseFromString(xmlContent, 'text/xml');
         const programmes = xmlDoc.getElementsByTagName('programme');
         
-        // Store EPG data for later use
         this.epgData = {};
         
         for (let programme of programmes) {
@@ -176,23 +235,17 @@ class IPTVApp {
         }
     }
     
-    renderChannelList(filterText = '') {
+    renderChannelList() {
         if (!this.channelListEl) return;
-        
-        const filteredChannels = filterText
-            ? this.channels.filter(ch => 
-                ch.name.toLowerCase().includes(filterText.toLowerCase()) ||
-                ch.group.toLowerCase().includes(filterText.toLowerCase())
-              )
-            : this.channels;
         
         // Group channels by category
         const grouped = {};
-        filteredChannels.forEach(channel => {
-            if (!grouped[channel.group]) {
-                grouped[channel.group] = [];
+        this.filteredChannels.forEach(channel => {
+            const group = channel.group || 'Geral';
+            if (!grouped[group]) {
+                grouped[group] = [];
             }
-            grouped[channel.group].push(channel);
+            grouped[group].push(channel);
         });
         
         let html = '';
@@ -200,25 +253,29 @@ class IPTVApp {
         for (const [group, channels] of Object.entries(grouped)) {
             html += `
                 <div class="channel-group-header">
-                    <h3>${group}</h3>
+                    <h3>${this.escapeHtml(group)}</h3>
+                    <span class="channel-count">${channels.length}</span>
                 </div>
             `;
             
             channels.forEach(channel => {
                 const isActive = this.currentChannel?.url === channel.url;
                 html += `
-                    <div class="channel-item ${isActive ? 'active' : ''}" data-url="${channel.url}" data-name="${channel.name}" data-group="${channel.group}">
-                        <div>
-                            <div class="channel-name">${this.escapeHtml(channel.name)}</div>
-                            <div class="channel-group">${this.escapeHtml(channel.group)}</div>
+                    <div class="channel-item ${isActive ? 'active' : ''}" data-url="${this.escapeHtml(channel.url)}" data-name="${this.escapeHtml(channel.name)}" data-group="${this.escapeHtml(channel.group)}" data-logo="${this.escapeHtml(channel.logo)}">
+                        <div class="channel-info-container">
+                            ${channel.logo ? `<img src="${channel.logo}" class="channel-logo" alt="${channel.name}" onerror="this.style.display='none'">` : '<div class="channel-logo-placeholder">📺</div>'}
+                            <div class="channel-details">
+                                <div class="channel-name">${this.escapeHtml(channel.name)}</div>
+                                <div class="channel-group">${this.escapeHtml(channel.group)}</div>
+                            </div>
                         </div>
-                        ${channel.logo ? `<img src="${channel.logo}" class="channel-logo" alt="${channel.name}" style="width: 30px; height: 30px; object-fit: contain;">` : ''}
+                        <div class="channel-play-icon">▶</div>
                     </div>
                 `;
             });
         }
         
-        this.channelListEl.innerHTML = html;
+        this.channelListEl.innerHTML = html || '<div class="no-channels">Nenhum canal encontrado</div>';
         
         // Add click handlers
         document.querySelectorAll('.channel-item').forEach(item => {
@@ -226,22 +283,30 @@ class IPTVApp {
                 const url = item.dataset.url;
                 const name = item.dataset.name;
                 const group = item.dataset.group;
-                this.playChannel(url, name, group);
+                const logo = item.dataset.logo;
+                this.playChannel(url, name, group, logo);
             });
         });
     }
     
     filterChannels(searchText) {
-        this.renderChannelList(searchText);
+        if (!searchText.trim()) {
+            this.filteredChannels = [...this.channels];
+        } else {
+            this.filteredChannels = this.channels.filter(ch => 
+                ch.name.toLowerCase().includes(searchText.toLowerCase())
+            );
+        }
+        this.renderChannelList();
     }
     
-    playChannel(url, name, group) {
-        if (!url) {
+    playChannel(url, name, group, logo) {
+        if (!url || url === 'undefined') {
             this.showError('URL do canal inválida');
             return;
         }
         
-        this.currentChannel = { url, name, group };
+        this.currentChannel = { url, name, group, logo };
         
         // Update UI
         document.querySelectorAll('.channel-item').forEach(item => {
@@ -253,56 +318,118 @@ class IPTVApp {
         
         this.currentChannelNameEl.textContent = name;
         this.currentChannelGroupEl.textContent = group;
+        if (logo && this.currentChannelLogoEl) {
+            this.currentChannelLogoEl.src = logo;
+            this.currentChannelLogoEl.style.display = 'block';
+        } else if (this.currentChannelLogoEl) {
+            this.currentChannelLogoEl.style.display = 'none';
+        }
         this.channelInfoEl.classList.remove('hidden');
         
-        // Create or update video player
+        // Create video player
         this.playerContainer.innerHTML = `
             <video id="videoPlayer" controls autoplay style="width: 100%; height: 100%; object-fit: contain;">
-                <source src="${url}" type="application/x-mpegURL">
+                <source src="${url}" type="application/vnd.apple.mpegurl">
                 Seu navegador não suporta vídeo HTML5.
             </video>
+            <div id="playerError" class="player-error hidden">
+                <p>⚠️ Erro ao carregar o canal</p>
+                <button onclick="location.reload()">Tentar Novamente</button>
+            </div>
         `;
         
         const videoPlayer = document.getElementById('videoPlayer');
         
         // Handle different stream types
-        if (url.includes('.m3u8')) {
-            if (Hls.isSupported()) {
-                const hls = new Hls();
+        if (url.includes('.m3u8') || url.includes('playlist.m3u8')) {
+            if (Hls && Hls.isSupported()) {
+                const hls = new Hls({
+                    debug: false,
+                    enableWorker: true,
+                    lowLatencyMode: true,
+                    backBufferLength: 90
+                });
                 hls.loadSource(url);
                 hls.attachMedia(videoPlayer);
                 hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                    videoPlayer.play();
+                    videoPlayer.play().catch(e => console.log('Auto-play prevented:', e));
+                });
+                hls.on(Hls.Events.ERROR, (event, data) => {
+                    console.error('HLS Error:', data);
+                    if (data.fatal) {
+                        this.showPlayerError();
+                    }
                 });
             } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
                 videoPlayer.src = url;
                 videoPlayer.addEventListener('loadedmetadata', () => {
-                    videoPlayer.play();
+                    videoPlayer.play().catch(e => console.log('Auto-play prevented:', e));
                 });
+            } else {
+                this.showError('Seu navegador não suporta streaming HLS');
             }
+        } else if (url.endsWith('.ts') || url.includes('.ts')) {
+            // Para streams TS, tentar como vídeo normal
+            videoPlayer.src = url;
+            videoPlayer.play().catch(e => console.log('Auto-play prevented:', e));
         } else {
             videoPlayer.src = url;
-            videoPlayer.play();
+            videoPlayer.play().catch(e => console.log('Auto-play prevented:', e));
         }
         
         // Handle errors
         videoPlayer.addEventListener('error', (e) => {
-            console.error('Erro no player:', e);
-            this.showError('Erro ao reproduzir o canal. O stream pode estar offline.');
+            console.error('Player error:', e);
+            this.showPlayerError();
+        });
+        
+        // Try to reload on error after 5 seconds
+        videoPlayer.addEventListener('stalled', () => {
+            console.log('Stream stalled, attempting to reload...');
+            setTimeout(() => {
+                if (videoPlayer.paused || videoPlayer.readyState < 2) {
+                    videoPlayer.load();
+                }
+            }, 5000);
         });
     }
     
+    showPlayerError() {
+        const errorDiv = document.getElementById('playerError');
+        if (errorDiv) {
+            errorDiv.classList.remove('hidden');
+        }
+        this.showError('O canal pode estar offline no momento. Tente outro canal.');
+    }
+    
     showLoading() {
-        this.channelListEl.innerHTML = '<div class="loading">Carregando canais...</div>';
+        this.channelListEl.innerHTML = '<div class="loading"><div class="spinner"></div>Carregando canais...</div>';
     }
     
     showError(message) {
-        this.channelListEl.innerHTML = `<div class="error">${message}</div>`;
-        setTimeout(() => {
-            if (this.channels.length > 0) {
-                this.renderChannelList();
-            }
-        }, 3000);
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'error-notification';
+        errorDiv.innerHTML = `
+            <span>⚠️ ${message}</span>
+            <button onclick="this.parentElement.remove()">✕</button>
+        `;
+        document.body.appendChild(errorDiv);
+        setTimeout(() => errorDiv.remove(), 5000);
+        
+        if (this.channels.length === 0) {
+            this.channelListEl.innerHTML = `<div class="error">${message}</div>`;
+        }
+    }
+    
+    showSuccess(message) {
+        const successDiv = document.createElement('div');
+        successDiv.className = 'success-notification';
+        successDiv.innerHTML = `
+            <span>✅ ${message}</span>
+            <button onclick="this.parentElement.remove()">✕</button>
+        `;
+        document.body.appendChild(successDiv);
+        setTimeout(() => successDiv.remove(), 3000);
     }
     
     escapeHtml(text) {
@@ -312,10 +439,17 @@ class IPTVApp {
     }
 }
 
-// Initialize app
-const app = new IPTVApp();
+// Initialize app when ready
+document.addEventListener('DOMContentLoaded', () => {
+    window.app = new IPTVApp();
+});
 
 // Load HLS.js for m3u8 support
-const script = document.createElement('script');
-script.src = 'https://cdn.jsdelivr.net/npm/hls.js@latest';
-document.head.appendChild(script);
+if (!window.Hls) {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/hls.js@latest';
+    script.onload = () => {
+        console.log('HLS.js loaded');
+    };
+    document.head.appendChild(script);
+}
