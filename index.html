@@ -26,11 +26,7 @@
                 </button>
             </div>
         </header>
-        <div class="category-filter">
-    <select id="categoryFilter">
-        <option value="Todos">Todas as Categorias</option>
-    </select>
-</div>
+
         <div class="main-content">
             <aside class="sidebar">
                 <div class="playlist-header">
@@ -48,6 +44,13 @@
                         </button>
                     </div>
                 </div>
+                
+                <div class="category-filter">
+                    <select id="categoryFilter">
+                        <option value="Todos">Todas as Categorias</option>
+                    </select>
+                </div>
+                
                 <div class="search-box">
                     <input type="text" id="searchInput" placeholder="Buscar canais...">
                     <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -55,6 +58,7 @@
                         <path d="M21 21l-4.35-4.35"/>
                     </svg>
                 </div>
+                
                 <div id="channelList" class="channel-list"></div>
             </aside>
 
@@ -68,13 +72,14 @@
                         <p>Selecione um canal para assistir</p>
                     </div>
                 </div>
-               <div id="channelInfo" class="channel-info hidden">
-    <img id="currentChannelLogo" class="current-logo" style="display: none;">
-    <div class="channel-text">
-        <h3 id="currentChannelName"></h3>
-        <p id="currentChannelGroup"></p>
-    </div>
-</div>
+                
+                <div id="channelInfo" class="channel-info hidden">
+                    <img id="currentChannelLogo" class="current-logo" style="display: none;">
+                    <div class="channel-text">
+                        <h3 id="currentChannelName"></h3>
+                        <p id="currentChannelGroup"></p>
+                    </div>
+                </div>
             </main>
         </div>
 
@@ -87,8 +92,8 @@
                 <div class="modal-body">
                     <div class="form-group">
                         <label>URL da Playlist M3U:</label>
-                        <input type="url" id="playlistUrl" placeholder="https://exemplo.com/playlist.m3u">
-                        <small>Cole a URL da sua lista M3U</small>
+                        <input type="url" id="playlistUrl" placeholder="https://exemplo.com/playlist.m3u" value="https://raw.githubusercontent.com/Ramys/Iptv-Brasil-2026/master/novalista.m3u8">
+                        <small>URL padrão já configurada com a lista do GitHub</small>
                     </div>
                     <div class="form-group">
                         <label>URL do EPG (opcional):</label>
@@ -100,6 +105,7 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <script src="script.js"></script>
 </body>
 </html>
