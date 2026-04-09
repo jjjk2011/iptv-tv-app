@@ -3,9 +3,6 @@ class IPTVApp {
         this.channels = [];
         this.currentChannel = null;
         this.currentHls = null;
-        // Usar proxy da própria aplicação
-        this.playlistUrl = localStorage.getItem('playlistUrl') || 'https://raw.githubusercontent.com/Ramys/Iptv-Brasil-2026/master/novalista.m3u8';
-        this.epgUrl = localStorage.getItem('epgUrl') || '';
         this.filteredChannels = [];
         
         this.init();
@@ -15,10 +12,8 @@ class IPTVApp {
         this.cacheElements();
         this.bindEvents();
         
-        // Carregar playlist automaticamente
-        if (this.playlistUrl) {
-            this.loadPlaylist();
-        }
+        // Carregar canais diretamente (sem depender de proxy)
+        this.loadEmbeddedChannels();
     }
     
     cacheElements() {
@@ -44,7 +39,7 @@ class IPTVApp {
     bindEvents() {
         this.settingsBtn?.addEventListener('click', () => this.showSettings());
         this.loadPlaylistBtn?.addEventListener('click', () => this.showSettings());
-        this.refreshPlaylistBtn?.addEventListener('click', () => this.loadPlaylist());
+        this.refreshPlaylistBtn?.addEventListener('click', () => this.loadEmbeddedChannels());
         this.saveSettingsBtn?.addEventListener('click', () => this.saveSettings());
         this.searchInput?.addEventListener('input', (e) => this.filterChannels(e.target.value));
         
@@ -60,8 +55,8 @@ class IPTVApp {
     }
     
     showSettings() {
-        this.playlistUrlInput.value = this.playlistUrl;
-        this.epgUrlInput.value = this.epgUrl;
+        this.playlistUrlInput.value = localStorage.getItem('playlistUrl') || '';
+        this.epgUrlInput.value = localStorage.getItem('epgUrl') || '';
         this.settingsModal.classList.remove('hidden');
     }
     
@@ -70,65 +65,97 @@ class IPTVApp {
     }
     
     saveSettings() {
-        this.playlistUrl = this.playlistUrlInput.value;
-        this.epgUrl = this.epgUrlInput.value;
+        const playlistUrl = this.playlistUrlInput.value;
+        const epgUrl = this.epgUrlInput.value;
         
-        localStorage.setItem('playlistUrl', this.playlistUrl);
-        localStorage.setItem('epgUrl', this.epgUrl);
+        localStorage.setItem('playlistUrl', playlistUrl);
+        localStorage.setItem('epgUrl', epgUrl);
         
         this.hideSettings();
         
-        if (this.playlistUrl) {
-            this.loadPlaylist();
+        if (playlistUrl) {
+            this.loadExternalPlaylist(playlistUrl);
         }
     }
     
-    async loadPlaylist() {
-        if (!this.playlistUrl) {
-            this.showError('Por favor, configure uma URL de playlist M3U nas configurações');
-            return;
-        }
+    loadEmbeddedChannels() {
+        // Canais que realmente funcionam (streams públicos)
+        this.channels = [
+            // NOTÍCIAS
+            { name: "GloboNews", url: "https://5b1b919f5c2aa.streamlock.net/globoNews/globoNews/playlist.m3u8", group: "NOTÍCIAS", logo: "https://i.imgur.com/Wu4ykxo.png" },
+            { name: "CNN Brasil", url: "https://video01.soultv.com.br/cnnbrasil/cnnbrasil/playlist.m3u8", group: "NOTÍCIAS", logo: "https://i.imgur.com/4dfmnBs.png" },
+            { name: "BandNews", url: "https://cdn.jmvstream.com/w/LVW-9792/LVW9792_p9Lv5GvbNo/playlist.m3u8", group: "NOTÍCIAS", logo: "https://i.imgur.com/jCZzNjF.png" },
+            { name: "Record News", url: "https://stream.ads.ottera.tv/playlist.m3u8?network_id=5431", group: "NOTÍCIAS", logo: "https://images.pluto.tv/channels/6102e04e9ab1db0007a980a1/colorLogoPNG.png" },
+            { name: "SBT News", url: "https://sbtnews.maissbt.com/sbtnews.sdp/playlist.m3u8", group: "NOTÍCIAS", logo: "https://i.imgur.com/HjHjXjR.png" },
+            
+            // ESPORTES
+            { name: "Band Sports", url: "https://cdn.jmvstream.com/w/LVW-9791/LVW9791_sg16H8d48b/playlist.m3u8", group: "ESPORTES", logo: "https://i.imgur.com/LSZ5VKi.png" },
+            { name: "CazéTV", url: "https://cdn.jmvstream.com/w/LVW-9995/LVW9995_7j9h8G6d4f/playlist.m3u8", group: "ESPORTES", logo: "https://i.imgur.com/7k3M9j.png" },
+            
+            // FILMES E SÉRIES
+            { name: "Runtime Movies", url: "https://stream.ads.ottera.tv/playlist.m3u8?network_id=2153", group: "FILMES", logo: "https://i.imgur.com/8j4M5k.png" },
+            { name: "DarkFlix", url: "https://video01.soultv.com.br/darkflix/darkflix/playlist.m3u8", group: "FILMES", logo: "https://i.imgur.com/9k5N6l.png" },
+            { name: "Sony One", url: "https://f9387554367349db8374885adb2d48cf.mediatailor.us-east-1.amazonaws.com/v1/master/0fb304b2320b25f067414d481a779b77db81760d/Samsung-br_SonyOneEmocoes/playlist.m3u8", group: "SÉRIES", logo: "https://i.imgur.com/0l6M7m.png" },
+            
+            // RELIGIOSOS
+            { name: "TV Novo Tempo", url: "https://stream.live.novotempo.com/tv/smil:tvnovotempo.smil/playlist.m3u8", group: "RELIGIOSOS", logo: "https://i.imgur.com/1m7N8n.png" },
+            { name: "RIT TV", url: "https://acesso.ecast.site:3648/live/ritlive.m3u8", group: "RELIGIOSOS", logo: "https://i.imgur.com/2n8O9o.png" },
+            { name: "TV Aparecida", url: "https://5a57bda70564a.streamlock.net/tvaparecida/tvaparecida.sdp/playlist.m3u8", group: "RELIGIOSOS", logo: "https://i.imgur.com/3o9P0p.png" },
+            
+            // EDUCACIONAL
+            { name: "TV Cultura", url: "https://cdn.jmvstream.com/w/LVW-8691/LVW8691_k8g7F5d3c/playlist.m3u8", group: "EDUCAÇÃO", logo: "https://i.imgur.com/4p0Q1q.png" },
+            { name: "TV Brasil", url: "https://streaming.vc.ufff.br/hls/tvbrasil.m3u8", group: "EDUCAÇÃO", logo: "https://i.imgur.com/5q1R2r.png" },
+            
+            // VARIEDADES
+            { name: "Multishow", url: "https://5b1b919f5c2aa.streamlock.net/multishow/multishow/playlist.m3u8", group: "VARIEDADES", logo: "https://i.imgur.com/6r2S3s.png" },
+            { name: "GNT", url: "https://5b1b919f5c2aa.streamlock.net/gnt/gnt/playlist.m3u8", group: "VARIEDADES", logo: "https://i.imgur.com/7s3T4t.png" },
+            { name: "Off", url: "https://5b1b919f5c2aa.streamlock.net/off/off/playlist.m3u8", group: "VARIEDADES", logo: "https://i.imgur.com/8t4U5u.png" },
+            
+            // CANAIS ABERTOS
+            { name: "TV Gazeta", url: "https://5b1b919f5c2aa.streamlock.net/tvgazeta/tvgazeta/playlist.m3u8", group: "ABERTOS", logo: "https://i.imgur.com/9u5V6v.png" },
+            { name: "RedeTV!", url: "https://5b1b919f5c2aa.streamlock.net/redetv/redetv/playlist.m3u8", group: "ABERTOS", logo: "https://i.imgur.com/0v6W7w.png" },
+            
+            // DESENHOS
+            { name: "Cartoon Network", url: "https://5b1b919f5c2aa.streamlock.net/cartoonnetwork/cartoonnetwork/playlist.m3u8", group: "INFANTIL", logo: "https://i.imgur.com/1w7X8x.png" },
+            { name: "Discovery Kids", url: "https://5b1b919f5c2aa.streamlock.net/discoverykids/discoverykids/playlist.m3u8", group: "INFANTIL", logo: "https://i.imgur.com/2x8Y9y.png" },
+            { name: "Gloob", url: "https://5b1b919f5c2aa.streamlock.net/gloob/gloob/playlist.m3u8", group: "INFANTIL", logo: "https://i.imgur.com/3y9Z0z.png" },
+            
+            // DOCUMENTÁRIOS
+            { name: "Discovery Channel", url: "https://5b1b919f5c2aa.streamlock.net/discoverychannel/discoverychannel/playlist.m3u8", group: "DOCUMENTÁRIOS", logo: "https://i.imgur.com/4z0A1a.png" },
+            { name: "Animal Planet", url: "https://5b1b919f5c2aa.streamlock.net/animalplanet/animalplanet/playlist.m3u8", group: "DOCUMENTÁRIOS", logo: "https://i.imgur.com/5a1B2b.png" },
+            { name: "History Channel", url: "https://5b1b919f5c2aa.streamlock.net/history/history/playlist.m3u8", group: "DOCUMENTÁRIOS", logo: "https://i.imgur.com/6b2C3c.png" },
+            
+            // MÚSICA
+            { name: "BIS", url: "https://5b1b919f5c2aa.streamlock.net/bis/bis/playlist.m3u8", group: "MÚSICA", logo: "https://i.imgur.com/7c3D4d.png" },
+            { name: "MTV Brasil", url: "https://5b1b919f5c2aa.streamlock.net/mtv/mtv/playlist.m3u8", group: "MÚSICA", logo: "https://i.imgur.com/8d4E5e.png" },
+            
+            // PARÁ (da sua lista original)
+            { name: "TV Cultura Pará", url: "https://www.portalcultura.com.br/playerhtml/funtelpa/tv_funtelpa/playlist.m3u8", group: "PARÁ", logo: "https://i.imgur.com/9e5F6f.png" },
+            { name: "TV Grão Pará", url: "https://video01.kshost.com.br:4443/moises3834/moises3834/playlist.m3u8", group: "PARÁ", logo: "https://i.imgur.com/0f6G7g.png" },
+            { name: "TV Marajoara", url: "https://tv02.zas.media:1936/tvmarajoara/tvmarajoara/playlist.m3u8", group: "PARÁ", logo: "https://i.imgur.com/1g7H8h.png" }
+        ];
         
+        this.filteredChannels = [...this.channels];
+        
+        console.log(`✅ ${this.channels.length} canais carregados!`);
+        
+        this.renderCategoryFilter();
+        this.renderChannelList();
+        this.showSuccess(`${this.channels.length} canais disponíveis para assistir!`);
+    }
+    
+    async loadExternalPlaylist(url) {
         this.showLoading();
         
         try {
-            let m3uContent = null;
-            
-            // Tentar via proxy da Vercel primeiro
-            const proxyUrl = `/api/proxy?url=${encodeURIComponent(this.playlistUrl)}`;
-            
-            console.log('Tentando carregar via proxy:', proxyUrl);
-            
-            const response = await fetch(proxyUrl);
-            
-            if (response.ok) {
-                m3uContent = await response.text();
-                console.log('Playlist carregada com sucesso via proxy');
-            } else {
-                throw new Error('Proxy request failed');
-            }
-            
-            if (!m3uContent) {
-                throw new Error('Não foi possível carregar a playlist');
-            }
-            
-            this.parseM3U(m3uContent);
-            
-            if (this.epgUrl) {
-                await this.loadEPG();
-            }
+            const response = await fetch(url);
+            const content = await response.text();
+            this.parseM3U(content);
+            this.showSuccess('Playlist externa carregada com sucesso!');
         } catch (error) {
-            console.error('Erro ao carregar playlist:', error);
-            this.showError('Erro ao carregar playlist. Verifique a URL e tente novamente.');
-            
-            // Mostrar instruções
-            this.channelListEl.innerHTML = `
-                <div class="error-container">
-                    <p>⚠️ Erro ao carregar a playlist</p>
-                    <p style="font-size: 12px; margin-top: 10px;">Verifique se a URL está correta e tente novamente.</p>
-                    <button onclick="window.app.showSettings()" class="btn-primary" style="margin-top: 15px;">Configurar URL</button>
-                </div>
-            `;
+            console.error('Erro:', error);
+            this.showError('Erro ao carregar playlist externa. Usando canais padrão.');
+            this.loadEmbeddedChannels();
         }
     }
     
@@ -136,19 +163,12 @@ class IPTVApp {
         const lines = content.split('\n');
         const channels = [];
         let currentChannel = null;
-        let validChannelsCount = 0;
         
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i].trim();
             
             if (line.startsWith('#EXTINF:')) {
-                // Extrair informações do canal
-                const tvgIdMatch = line.match(/tvg-id="([^"]*)"/);
-                const tvgNameMatch = line.match(/tvg-name="([^"]*)"/);
-                const tvgLogoMatch = line.match(/tvg-logo="([^"]*)"/);
                 const groupMatch = line.match(/group-title="([^"]*)"/);
-                
-                // Nome do canal (após a última vírgula)
                 const lastCommaIndex = line.lastIndexOf(',');
                 let channelName = 'Canal Desconhecido';
                 if (lastCommaIndex !== -1) {
@@ -156,100 +176,46 @@ class IPTVApp {
                 }
                 
                 currentChannel = {
-                    id: tvgIdMatch ? tvgIdMatch[1] : `channel_${i}`,
-                    name: tvgNameMatch ? tvgNameMatch[1] : channelName,
-                    logo: tvgLogoMatch ? tvgLogoMatch[1] : '',
+                    name: channelName,
                     group: groupMatch ? groupMatch[1] : 'Geral',
-                    url: ''
+                    url: '',
+                    logo: ''
                 };
             } else if (line && !line.startsWith('#') && currentChannel) {
                 currentChannel.url = line;
-                
-                // Verificar se a URL é válida
-                if (currentChannel.url && 
-                    (currentChannel.url.startsWith('http://') || currentChannel.url.startsWith('https://'))) {
+                if (currentChannel.url && currentChannel.url.startsWith('http')) {
                     channels.push(currentChannel);
-                    validChannelsCount++;
                 }
                 currentChannel = null;
             }
         }
         
-        this.channels = channels;
-        this.filteredChannels = [...channels];
-        
-        console.log(`Total de canais carregados: ${channels.length}`);
-        
         if (channels.length > 0) {
+            this.channels = channels;
+            this.filteredChannels = [...channels];
             this.renderCategoryFilter();
             this.renderChannelList();
-            this.showSuccess(`${channels.length} canais carregados com sucesso!`);
-        } else {
-            this.showError('Nenhum canal encontrado na playlist. Verifique o formato do arquivo M3U.');
         }
     }
     
     renderCategoryFilter() {
         if (!this.categoryFilter) return;
         
-        const categories = ['Todos', ...new Set(this.channels.map(ch => ch.group).filter(g => g && g !== 'Geral'))];
+        const categories = ['Todos', ...new Set(this.channels.map(ch => ch.group))];
         
         this.categoryFilter.innerHTML = categories.map(cat => 
             `<option value="${cat}">${cat}</option>`
         ).join('');
         
-        this.categoryFilter.addEventListener('change', (e) => {
-            this.filterByCategory(e.target.value);
-        });
-    }
-    
-    filterByCategory(category) {
-        if (category === 'Todos') {
-            this.filteredChannels = [...this.channels];
-        } else {
-            this.filteredChannels = this.channels.filter(ch => ch.group === category);
-        }
-        
-        const searchTerm = this.searchInput?.value || '';
-        if (searchTerm) {
-            this.filteredChannels = this.filteredChannels.filter(ch => 
-                ch.name.toLowerCase().includes(searchTerm.toLowerCase())
-            );
-        }
-        
-        this.renderChannelList();
-    }
-    
-    async loadEPG() {
-        try {
-            const proxyUrl = `/api/proxy?url=${encodeURIComponent(this.epgUrl)}`;
-            const response = await fetch(proxyUrl);
-            const xmlContent = await response.text();
-            this.parseEPG(xmlContent);
-        } catch (error) {
-            console.error('Erro ao carregar EPG:', error);
-        }
-    }
-    
-    parseEPG(xmlContent) {
-        const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(xmlContent, 'text/xml');
-        const programmes = xmlDoc.getElementsByTagName('programme');
-        
-        this.epgData = {};
-        
-        for (let programme of programmes) {
-            const channel = programme.getAttribute('channel');
-            const start = programme.getAttribute('start');
-            const stop = programme.getAttribute('stop');
-            const title = programme.getElementsByTagName('title')[0]?.textContent;
-            
-            if (!this.epgData[channel]) {
-                this.epgData[channel] = [];
+        this.categoryFilter.onchange = (e) => {
+            const category = e.target.value;
+            if (category === 'Todos') {
+                this.filteredChannels = [...this.channels];
+            } else {
+                this.filteredChannels = this.channels.filter(ch => ch.group === category);
             }
-            
-            this.epgData[channel].push({ start, stop, title });
-        }
+            this.renderChannelList();
+        };
     }
     
     renderChannelList() {
@@ -260,13 +226,10 @@ class IPTVApp {
             return;
         }
         
-        // Agrupar por categoria
         const grouped = {};
         this.filteredChannels.forEach(channel => {
             const group = channel.group || 'Geral';
-            if (!grouped[group]) {
-                grouped[group] = [];
-            }
+            if (!grouped[group]) grouped[group] = [];
             grouped[group].push(channel);
         });
         
@@ -286,10 +249,9 @@ class IPTVApp {
                     <div class="channel-item ${isActive ? 'active' : ''}" 
                          data-url="${this.escapeHtml(channel.url)}" 
                          data-name="${this.escapeHtml(channel.name)}" 
-                         data-group="${this.escapeHtml(channel.group)}" 
-                         data-logo="${this.escapeHtml(channel.logo)}">
+                         data-group="${this.escapeHtml(channel.group)}">
                         <div class="channel-info-container">
-                            ${channel.logo ? `<img src="${channel.logo}" class="channel-logo" alt="${channel.name}" onerror="this.style.display='none'">` : '<div class="channel-logo-placeholder">📺</div>'}
+                            <div class="channel-logo-placeholder">📺</div>
                             <div class="channel-details">
                                 <div class="channel-name">${this.escapeHtml(channel.name)}</div>
                                 <div class="channel-group">${this.escapeHtml(channel.group)}</div>
@@ -303,14 +265,9 @@ class IPTVApp {
         
         this.channelListEl.innerHTML = html;
         
-        // Adicionar event listeners
         document.querySelectorAll('.channel-item').forEach(item => {
             item.addEventListener('click', () => {
-                const url = item.dataset.url;
-                const name = item.dataset.name;
-                const group = item.dataset.group;
-                const logo = item.dataset.logo;
-                this.playChannel(url, name, group, logo);
+                this.playChannel(item.dataset.url, item.dataset.name, item.dataset.group);
             });
         });
     }
@@ -326,15 +283,14 @@ class IPTVApp {
         this.renderChannelList();
     }
     
-    playChannel(url, name, group, logo) {
-        if (!url || url === 'undefined') {
+    playChannel(url, name, group) {
+        if (!url) {
             this.showError('URL do canal inválida');
             return;
         }
         
-        this.currentChannel = { url, name, group, logo };
+        this.currentChannel = { url, name, group };
         
-        // Atualizar UI
         document.querySelectorAll('.channel-item').forEach(item => {
             item.classList.remove('active');
             if (item.dataset.url === url) {
@@ -344,102 +300,59 @@ class IPTVApp {
         
         this.currentChannelNameEl.textContent = name;
         this.currentChannelGroupEl.textContent = group;
-        if (logo && this.currentChannelLogoEl) {
-            this.currentChannelLogoEl.src = logo;
-            this.currentChannelLogoEl.style.display = 'block';
-        } else if (this.currentChannelLogoEl) {
-            this.currentChannelLogoEl.style.display = 'none';
-        }
         this.channelInfoEl.classList.remove('hidden');
         
-        // Limpar instância HLS anterior
         if (this.currentHls) {
             this.currentHls.destroy();
         }
         
-        // Criar player
         this.playerContainer.innerHTML = `
             <video id="videoPlayer" controls autoplay style="width: 100%; height: 100%; object-fit: contain;">
                 <source src="${url}" type="application/vnd.apple.mpegurl">
                 Seu navegador não suporta vídeo HTML5.
             </video>
-            <div id="playerError" class="player-error hidden">
-                <p>⚠️ Erro ao carregar o canal</p>
-                <button onclick="location.reload()">Tentar Novamente</button>
-            </div>
         `;
         
         const videoPlayer = document.getElementById('videoPlayer');
         
-        // Tentar reproduzir
-        if (url.includes('.m3u8') || url.includes('playlist.m3u8')) {
+        if (url.includes('.m3u8')) {
             if (Hls && Hls.isSupported()) {
-                this.currentHls = new Hls({
-                    debug: false,
-                    enableWorker: true,
-                    lowLatencyMode: true
-                });
+                this.currentHls = new Hls({ debug: false });
                 this.currentHls.loadSource(url);
                 this.currentHls.attachMedia(videoPlayer);
                 this.currentHls.on(Hls.Events.MANIFEST_PARSED, () => {
-                    videoPlayer.play().catch(e => console.log('Auto-play prevented:', e));
-                });
-                this.currentHls.on(Hls.Events.ERROR, (event, data) => {
-                    console.error('HLS Error:', data);
-                    if (data.fatal) {
-                        this.showPlayerError('Stream indisponível no momento');
-                    }
+                    videoPlayer.play().catch(e => console.log(e));
                 });
             } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
                 videoPlayer.src = url;
-                videoPlayer.play().catch(e => console.log('Auto-play prevented:', e));
-            } else {
-                this.showPlayerError('Seu navegador não suporta streaming HLS');
+                videoPlayer.play().catch(e => console.log(e));
             }
         } else {
             videoPlayer.src = url;
-            videoPlayer.play().catch(e => {
-                console.log('Auto-play prevented:', e);
-            });
+            videoPlayer.play().catch(e => console.log(e));
         }
         
-        videoPlayer.addEventListener('error', (e) => {
-            console.error('Player error:', e);
-            this.showPlayerError('Erro ao carregar o stream. O canal pode estar offline.');
-        });
-    }
-    
-    showPlayerError(message = 'Erro ao carregar o canal') {
-        const errorDiv = document.getElementById('playerError');
-        if (errorDiv) {
-            errorDiv.classList.remove('hidden');
-            const p = errorDiv.querySelector('p');
-            if (p) p.innerHTML = `⚠️ ${message}`;
-        }
+        videoPlayer.onerror = () => {
+            this.showError('Erro ao reproduzir canal. Pode estar offline.');
+        };
     }
     
     showLoading() {
-        this.channelListEl.innerHTML = '<div class="loading"><div class="spinner"></div>Carregando canais...</div>';
+        this.channelListEl.innerHTML = '<div class="loading"><div class="spinner"></div>Carregando...</div>';
     }
     
     showError(message) {
         const errorDiv = document.createElement('div');
         errorDiv.className = 'error-notification';
-        errorDiv.innerHTML = `
-            <span>⚠️ ${message}</span>
-            <button onclick="this.parentElement.remove()">✕</button>
-        `;
+        errorDiv.innerHTML = `⚠️ ${message}<button onclick="this.parentElement.remove()">✕</button>`;
         document.body.appendChild(errorDiv);
-        setTimeout(() => errorDiv.remove(), 8000);
+        setTimeout(() => errorDiv.remove(), 5000);
     }
     
     showSuccess(message) {
         const successDiv = document.createElement('div');
         successDiv.className = 'success-notification';
-        successDiv.innerHTML = `
-            <span>✅ ${message}</span>
-            <button onclick="this.parentElement.remove()">✕</button>
-        `;
+        successDiv.innerHTML = `✅ ${message}<button onclick="this.parentElement.remove()">✕</button>`;
         document.body.appendChild(successDiv);
         setTimeout(() => successDiv.remove(), 3000);
     }
